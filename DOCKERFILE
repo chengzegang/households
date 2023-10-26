@@ -1,0 +1,15 @@
+FROM nvidia/cuda:12.2.2-cudnn8-devel-ubuntu22.04
+RUN apt-get update && apt-get upgrade -y && apt-get install -y git git-lfs wget bzip2 ffmpeg build-essential
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+    chmod +x Miniconda3-latest-Linux-x86_64.sh && \
+    ./Miniconda3-latest-Linux-x86_64.sh -b -p /opt/conda && \
+    rm Miniconda3-latest-Linux-x86_64.sh
+ENV PATH /opt/conda/bin:$PATH
+
+
+COPY . /workspace
+WORKDIR /workspace
+RUN conda create --name pytorch python=3.10 --solver=libmamba && \
+    conda init bash && \
+    echo "conda activate pytorch" >> ~/.bashrc
+RUN pip install -r requirements.txt

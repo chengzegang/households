@@ -1,0 +1,45 @@
+name: pytorch
+channels:
+  - rapidsai
+  - nvidia
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.10
+  - conda==23.3.1
+  - conda-libmamba-solver
+  - mamba
+  - pip
+  - cuda-version=11.8
+  - rapids=23.10
+  - pytorch
+  - pytorch-cuda=11.8
+  - torchaudio
+  - torchvision
+  - matplotlib
+  - typer
+  - dill
+  - faiss-gpu
+  - jupyter
+  - tqdm
+  - mypy
+  - isort
+  - flake8
+  - black
+  - torchmetrics
+  - tensordict
+  - kornia
+  - ca-certificates
+  - certifi
+  - openssl
+  - loguru
+  - tensorboard
+  - datasets
+  - transformers
+  - diffusers
+  - timm
+  - aiofile
+  - httpx
+  - geopy
+  - webdataset
+prefix: /home/zc2309/miniforge3
