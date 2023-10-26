@@ -1,1 +1,1 @@
-from .transformer import ModernTransformer
+from .causal import CausalTransformer

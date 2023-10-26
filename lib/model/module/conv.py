@@ -1,8 +1,13 @@
 from torch import nn, Tensor
 from typing import Optional, Tuple, Type
-import torch.nn.functional as F
-from torch.ao.quantization.fuse_modules import fuse_conv_bn
 import torch
+from tensordict import tensorclass
+
+
+@tensorclass
+class UNetEncoderOutput:
+    latent: Tensor
+    skips: Optional[Tuple[Tensor, ...]] = None
 
 
 class ConvINReLU(nn.Module):
@@ -112,4 +117,94 @@ class ResidualStack(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         for residual in self.residuals:
             x = residual(x)
+        return x
+
+
+class UNetEncoder(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        base_channels: int,
+        depth: int,
+        out_channels: Optional[int] = None,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.base_channels = base_channels
+        self.depth = depth
+        self.in_conv = nn.Conv2d(in_channels, base_channels, 1, bias=False)
+        self.downsamples = nn.ModuleList(
+            [
+                Downsample(in_channels, base_channels),
+                *[
+                    Downsample(base_channels * 2**i, base_channels * 2 ** (i + 1))
+                    for i in range(depth - 1)
+                ],
+            ]
+        )
+        self.out_channels = (
+            base_channels * 2**depth if out_channels is None else out_channels
+        )
+        self.out_norm = nn.InstanceNorm2d(base_channels * 2**depth)
+        self.out_conv = nn.Conv2d(
+            base_channels * 2**depth, self.out_channels, 1, bias=False
+        )
+
+    def forward(self, x: Tensor, skip_connections: bool = False) -> Tensor:
+        x = self.in_conv(x)
+        skips = []
+        for downsample in self.downsamples:
+            skips.append(x)
+            x = downsample(x)
+        x = self.out_norm(x)
+        x = self.out_conv(x)
+        if skip_connections:
+            return UNetEncoderOutput(latent=x, skips=tuple(skips))
+
+
+class UNetDecoder(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        base_channels: int,
+        depth: int,
+        out_channels: Optional[int] = None,
+        skip_connections: bool = False,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.base_channels = base_channels
+        self.skip_connections = skip_connections
+        self.depth = depth
+        self.in_conv = nn.Conv2d(in_channels, base_channels * 2**depth, 1, bias=False)
+        down_cls = SkipUpsample if skip_connections else Upsample
+        self.upsamples = nn.ModuleList(
+            [
+                down_cls(base_channels * 2**i, base_channels * 2 ** (i - 1))
+                for i in range(depth, 0, -1)
+            ]
+        )
+        self.out_channels = base_channels if out_channels is None else out_channels
+        self.out_norm = nn.InstanceNorm2d(base_channels)
+        self.out_conv = nn.Conv2d(base_channels, self.out_channels, 1, bias=False)
+
+    def forward(
+        self,
+        inputs: Tensor | UNetEncoderOutput,
+        skips: Optional[Tuple[Tensor, ...]] = None,
+    ) -> Tensor:
+        x = None
+        if isinstance(inputs, UNetEncoderOutput):
+            x = inputs.latent
+            skips = inputs.skips
+        else:
+            x = inputs
+        x = self.in_conv(x)
+        for upsample, skip in zip(self.upsamples, reversed(skips)):
+            x = upsample(x)
+            x = torch.cat([x, skip], dim=1)
+        x = self.out_norm(x)
+        x = self.out_conv(x)
         return x
